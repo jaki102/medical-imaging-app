@@ -1,32 +1,61 @@
-import { Component } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject } from "@angular/core";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { Actions, ofType } from "@ngrx/effects";
+import * as AnnotationsActions from "./state/actions";
+import { combineLatest } from "rxjs";
+import { Store, select } from "@ngrx/store";
+import { getAnnotations } from "./state/selectors/annotations.selectors";
+import { Annotation, AppState } from "./types";
 
 @Component({
-  selector: 'app-root',
-  template: `
-    <!--The content below is only a placeholder and can be replaced.-->
-    <div style="text-align:center" class="content">
-      <h1>
-        Welcome to {{title}}!
-      </h1>
-      <span style="display: block">{{ title }} app is running!</span>
-      <img width="300" alt="Angular Logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTAgMjUwIj4KICAgIDxwYXRoIGZpbGw9IiNERDAwMzEiIGQ9Ik0xMjUgMzBMMzEuOSA2My4ybDE0LjIgMTIzLjFMMTI1IDIzMGw3OC45LTQzLjcgMTQuMi0xMjMuMXoiIC8+CiAgICA8cGF0aCBmaWxsPSIjQzMwMDJGIiBkPSJNMTI1IDMwdjIyLjItLjFWMjMwbDc4LjktNDMuNyAxNC4yLTEyMy4xTDEyNSAzMHoiIC8+CiAgICA8cGF0aCAgZmlsbD0iI0ZGRkZGRiIgZD0iTTEyNSA1Mi4xTDY2LjggMTgyLjZoMjEuN2wxMS43LTI5LjJoNDkuNGwxMS43IDI5LjJIMTgzTDEyNSA1Mi4xem0xNyA4My4zaC0zNGwxNy00MC45IDE3IDQwLjl6IiAvPgogIDwvc3ZnPg==">
-    </div>
-    <h2>Here are some links to help you start: </h2>
-    <ul>
-      <li>
-        <h2><a target="_blank" rel="noopener" href="https://angular.io/tutorial">Tour of Heroes</a></h2>
-      </li>
-      <li>
-        <h2><a target="_blank" rel="noopener" href="https://angular.io/cli">CLI Documentation</a></h2>
-      </li>
-      <li>
-        <h2><a target="_blank" rel="noopener" href="https://blog.angular.io/">Angular blog</a></h2>
-      </li>
-    </ul>
-    
-  `,
-  styles: []
+  selector: "app-root",
+  templateUrl: "./app.component.html",
+  styleUrls: ["./app.component.less"],
 })
-export class AppComponent {
-  title = 'medical-imaging-app';
+export class AppComponent implements OnInit {
+  public readonly title = "Medical Imaging App";
+
+  private destroyRef = inject(DestroyRef);
+
+  constructor(private actions$: Actions, private store: Store<AppState>) {}
+
+  public ngOnInit(): void {
+    const img = document.createElement("img");
+
+    combineLatest([
+      this.actions$.pipe(ofType(AnnotationsActions.loadImageSuccess)),
+      this.store.pipe(select(getAnnotations)),
+    ])
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(([{ blob }, annotations]) => {
+        const canvas = <HTMLCanvasElement>document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        img.src = URL.createObjectURL(blob);
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+        };
+        annotations.forEach((annotation: Annotation) => {
+          this.drawAnnotation(ctx, annotation);
+        });
+      });
+  }
+
+  public loadResources(): void {
+    this.store.dispatch(
+      AnnotationsActions.drawImageAndAnnotationsButtonClicked()
+    );
+  }
+
+  private drawAnnotation(
+    ctx: CanvasRenderingContext2D,
+    annotation: Annotation
+  ): void {
+    const { x, y, radiusX, radiusY } = annotation;
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.beginPath();
+    ctx.ellipse(x, y, radiusX, radiusY, Math.PI / 4, 0, 2 * Math.PI);
+    ctx.strokeStyle = "red";
+    ctx.stroke();
+  }
 }
